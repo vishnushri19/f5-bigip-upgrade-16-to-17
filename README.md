@@ -4,6 +4,7 @@ Ansible-based automation for upgrading F5 BIG-IP systems from version 16.x to 17
 
 ## 📋 Project Structure
 
+
 f5-bigip-upgrade-16-to-17/
 ├── inventory/
 │ └── hosts.ini # BIG-IP device inventory
@@ -34,7 +35,7 @@ f5-bigip-upgrade-16-to-17/
 ```bash
 pip install ansible
 
-2. Install F5 Collection
+### 2. Install F5 Collection
 
 ansible-galaxy collection install f5networks.f5_modules
 
