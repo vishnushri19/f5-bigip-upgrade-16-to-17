@@ -16,13 +16,56 @@ bigip_version_target: "17.1.1.3"
 # Target BIG-IP ISO filename
 bigip_software_image: "BIGIP-17.1.1.3.0.0.6.iso"
 
-# URL where the BIG-IP ISO is hosted
-# Update this to your internal server or CDN location
-# Examples:
-#   - http://192.168.1.50/iso/BIGIP-17.1.1.3.0.0.6.iso
-#   - https://your-internal-server.com/f5-images/BIGIP-17.1.1.3.0.0.6.iso
-#   - http://10.0.0.1/bigip-images/BIGIP-17.1.1.3.0.0.6.iso
+# ============================================================================
+# IMAGE SOURCE LOCATION - Choose ONE option below
+# ============================================================================
+
+# OPTION 1: ISO file on an HTTP/HTTPS Web Server (Recommended for HA/Multiple devices)
+# ============================================================================
+# If your ISO is hosted on an internal web server
+# Uncomment and update this option
+image_source_type: "http"
 bigip_software_url: "http://your-internal-server/BIGIP-17.1.1.3.0.0.6.iso"
+
+# Example URLs:
+#   http://192.168.1.50/iso/BIGIP-17.1.1.3.0.0.6.iso
+#   http://file-server.company.com/f5-images/BIGIP-17.1.1.3.0.0.6.iso
+#   https://s3-bucket.amazonaws.com/bigip-images/BIGIP-17.1.1.3.0.0.6.iso
+
+# OPTION 2: ISO file already on F5 device (Fastest, no upload needed)
+# ============================================================================
+# If ISO is already staged on the F5 device
+# Uncomment and update this option
+# image_source_type: "local_f5"
+# bigip_software_local_path: "/var/tmp/BIGIP-17.1.1.3.0.0.6.iso"
+
+# Common F5 storage locations:
+#   /var/tmp/               (temporary storage, 500MB-1GB available)
+#   /mnt/upload/            (upload directory, larger space)
+#   /var/prompt/            (boot location, limited space)
+
+# OPTION 3: ISO file on your local machine/Control Node (Ansible will upload)
+# ============================================================================
+# If you have the ISO on your computer running Ansible
+# Uncomment and update this option
+# image_source_type: "local_control_node"
+# bigip_software_local_path: "/path/to/iso/BIGIP-17.1.1.3.0.0.6.iso"
+
+# Examples:
+#   macOS/Linux: /home/user/Downloads/BIGIP-17.1.1.3.0.0.6.iso
+#   macOS:       /Users/username/Downloads/BIGIP-17.1.1.3.0.0.6.iso
+#   Windows:     C:\\Users\\username\\Downloads\\BIGIP-17.1.1.3.0.0.6.iso
+
+# ============================================================================
+# UPLOAD SETTINGS (Only needed if using local file)
+# ============================================================================
+
+# Temporary location on F5 where file will be uploaded
+f5_upload_temp_path: "/var/tmp/"
+
+# Maximum file size to upload in one request (in bytes)
+# Default: 1073741824 (1GB)
+upload_chunk_size: 1073741824
 
 # ============================================================================
 # UPGRADE VOLUME SETTINGS
@@ -56,5 +99,135 @@ bigip_reboot_after_upgrade: true
 # Increase for large systems or slow networks
 bigip_reboot_timeout: 3600
 
-# Time to wait (in seconds)
+# Time to wait (in seconds) for BIG-IP to fully boot
+# Default: 120 seconds (2 minutes)
+bigip_reboot_wait_time: 120
 
+# Delay (in seconds) before checking device is back online
+# Default: 30 seconds
+bigip_device_online_delay: 30
+
+# ============================================================================
+# IMAGE PROCESSING SETTINGS
+# ============================================================================
+
+# Wait time (in seconds) for image upload and processing
+# Default: 60 seconds
+# Increase this if you have slow network or large ISO
+image_upload_wait_time: 60
+
+# Retry count for image upload if it fails
+image_upload_retries: 3
+
+# Delay (in seconds) between retry attempts
+image_upload_retry_delay: 30
+
+# ============================================================================
+# BACKUP AND RECOVERY SETTINGS
+# ============================================================================
+
+# Create UCS (Unified Configuration Set) backup before upgrade
+create_ucs_backup: true
+
+# UCS backup filename
+ucs_backup_filename: "pre_upgrade_backup.ucs"
+
+# UCS backup destination on control node
+# Leave empty to skip copying backup to control node
+ucs_backup_dest: "/tmp/f5_backups/"
+
+# Save running configuration before upgrade
+save_running_config: true
+
+# Configuration backup filename
+config_backup_filename: "pre_upgrade_config.conf"
+
+# ============================================================================
+# HIGH AVAILABILITY (HA) SETTINGS
+# ============================================================================
+
+# Enable HA-aware upgrade (for active-standby pairs)
+enable_ha_upgrade: false
+
+# If HA is enabled, which device to upgrade first
+# Values: "standby" or "active"
+# Recommended: "standby" (upgrade secondary first, then failover)
+ha_upgrade_order: "standby"
+
+# Wait time (in seconds) for failover to complete
+ha_failover_timeout: 300
+
+# Verify sync status before upgrade
+verify_ha_sync: true
+
+# ============================================================================
+# VALIDATION AND HEALTH CHECK SETTINGS
+# ============================================================================
+
+# Perform pre-upgrade validation checks
+perform_pre_upgrade_checks: true
+
+# Perform post-upgrade validation checks
+perform_post_upgrade_checks: true
+
+# Check minimum free disk space before upgrade (in GB)
+min_free_disk_space: 5
+
+# Virtual servers/pools to check after upgrade
+pool_health_check: true
+
+# Retry count for health checks
+health_check_retries: 3
+
+# ============================================================================
+# NOTIFICATION AND LOGGING SETTINGS
+# ============================================================================
+
+# Enable detailed logging
+enable_detailed_logging: true
+
+# Log file location (on control node)
+log_file_path: "/tmp/f5_upgrade.log"
+
+# Send notification on upgrade completion
+enable_notifications: false
+
+# Notification method (email, slack, etc.)
+# notification_method: "email"
+
+# ============================================================================
+# ADVANCED SETTINGS
+# ============================================================================
+
+# SSL verification for HTTPS connections
+# Set to 'no' for self-signed certificates
+ssl_verify_cert: no
+
+# SSH port (if using SSH connection instead of HTTPAPI)
+ssh_port: 22
+
+# Ansible connection timeout (in seconds)
+ansible_connection_timeout: 30
+
+# Number of retries for API calls
+api_retries: 3
+
+# Delay between API retries (in seconds)
+api_retry_delay: 5
+
+# ============================================================================
+# SUPPORTED UPGRADE PATHS
+# ============================================================================
+# Current playbooks support:
+#
+# FROM versions:
+#   - 16.0.x
+#   - 16.1.x
+#
+# TO versions:
+#   - 17.0.x
+#   - 17.1.x
+#
+# For other versions, consult F5 upgrade documentation:
+# https://techdocs.f5.com/en-us/bigip-17-0-0/big-ip-release-notes/big-ip-upgrade.html
+# ============================================================================
