@@ -1,0 +1,94 @@
+---
+- name: Upgrade BIG-IP from 16.x to 17.x
+  hosts: bigip
+  gather_facts: no
+  connection: local
+
+  collections:
+    - f5networks.f5_modules
+
+  vars_files:
+    - ../group_vars/bigip.yml
+
+  tasks:
+    - name: Get current BIG-IP info
+      bigip_device_info:
+        gather_subset:
+          - system-info
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: no
+      register: bigip_current_version
+
+    - name: Display current version
+      debug:
+        msg: "Current version: {{ bigip_current_version.ansible_facts.system_info.product_version }}"
+
+    - name: Upload software image to BIG-IP
+      bigip_software_image:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: no
+        source: "{{ bigip_software_url }}"
+      register: upload_result
+
+    - name: Display upload status
+      debug:
+        msg: "Software image uploaded successfully"
+
+    - name: Wait for image processing
+      pause:
+        seconds: 30
+
+    - name: Install software on target volume
+      bigip_software_update:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: no
+        volume: "{{ bigip_target_volume }}"
+      register: install_result
+
+    - name: Display installation status
+      debug:
+        msg: "Software installed on volume {{ bigip_target_volume }}"
+
+    - name: Reboot BIG-IP
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: no
+        commands:
+          - tmsh reboot
+      register: reboot_result
+      ignore_errors: true
+
+    - name: Wait for BIG-IP to reboot (120 seconds)
+      pause:
+        seconds: 120
+
+    - name: Wait for device to come back online
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 443
+        delay: 30
+        timeout: 600
+
+    - name: Verify upgraded version
+      bigip_device_info:
+        gather_subset:
+          - system-info
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: no
+      register: bigip_new_version
+
+    - name: Display new version
+      debug:
+        msg: "Upgrade complete! New version: {{ bigip_new_version.ansible_facts.system_info.product_version }}"
