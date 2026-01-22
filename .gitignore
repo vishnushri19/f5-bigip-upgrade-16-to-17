@@ -1,0 +1,32 @@
+# Ansible
+*.retry
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Credentials and sensitive data
+*.pass
+*.pwd
+credentials.yml
+secrets.yml
+group_vars/bigip_secrets.yml
+
+# Backup files
+*.bak
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Temporary files
+.tmp/
+*.tmp
+temp/
