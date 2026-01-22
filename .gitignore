@@ -30,3 +30,21 @@ Thumbs.db
 .tmp/
 *.tmp
 temp/
+
+.gitignore                                 ← ADD these lines:
+
+# Virtual Environment
+venv/
+env/
+
+# Inventory with credentials  
+inventory/hosts.ini
+inventory/hosts_local.ini
+inventory/*.ini
+
+# Generated reports
+reports/
+*.txt
+
+# Logs
+*.log
