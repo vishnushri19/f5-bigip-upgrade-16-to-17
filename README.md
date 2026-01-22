@@ -25,39 +25,42 @@ f5-bigip-upgrade-16-to-17/
 ├── README.md                    # Project overview
 └── SETUP.md                     # Detailed setup instructions
 
-## 🚀 **Quick Start**
+## 🚀 Quick Start
+
 New to this project? Start here:
 
-Installation Guide
-Clone Repository
-Configure Environment
-Test Connection
-Run Pre-Upgrade Checks
-Run Upgrade
+- Installation Guide
+- Clone Repository
+- Configure Environment
+- Test Connection
+- Run Pre-Upgrade Checks
+- Run Upgrade
 
-## ⚙️ **Prerequisites**
+---
 
-Python 3.12+ (recommended)
+## ⚙️ Prerequisites
 
-Ansible 2.15+ (tested with 2.15.13)
+- Python 3.12+ (recommended)
+- Ansible 2.15+ (tested with 2.15.13)
+- F5 Ansible collection: `f5networks.f5_bigip` (v3.14.0+)
+- Network access to BIG-IP management interfaces
+- BIG-IP 17.x ISO image
+- Existing BIG-IP system running 16.x
 
-F5 Ansible collection: f5networks.f5_bigip (v3.14.0+)
+---
 
-Network access to BIG-IP management interfaces
+## 📦 Installation
 
-BIG-IP 17.x ISO image
+### 1. Create and activate a virtual environment
 
-Existing BIG-IP system running 16.x
-
-## 📦 **Installation**
-1. Create and activate a virtual environment
+```bash
 python3.12 -m venv venv
 source venv/bin/activate
 
-2. Install Ansible
+### 2. Install Ansible
 pip install ansible-core==2.15.13
 
-3. Install required collections
+### 3. Install required collections
 ansible-galaxy collection install -r requirements.yml
 
 ## 📝 **Inventory Setup**
