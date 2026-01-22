@@ -88,7 +88,8 @@ Run installer
 git --version
 python --version
 
-### Step 2: Clone the Repository
+## Step 2: Clone the Repository
+
 ### 2.1 Open Terminal/PowerShell
 macOS/Linux:
 # Open Terminal
@@ -147,7 +148,8 @@ text
 
 ✓ Cloning complete!
 
-Step 3: Install Ansible and F5 Collection
+## Step 3: Install Ansible and F5 Collection
+
 3.1 Create a Python virtual environment (recommended)
 This isolates your project dependencies:
 
@@ -193,7 +195,8 @@ text
 f5networks.f5_modules    X.XX.X
 ✓ Ansible and F5 collection installed!
 
-Step 4: Configure Your Environment
+## Step 4: Configure Your Environment
+
 4.1 Create a local credentials file (DO NOT commit to GitHub)
 Create a new file: inventory/hosts_local.ini
 
@@ -269,7 +272,7 @@ cat .gitignore | grep hosts_local
 # You should see it's listed to prevent accidental commits
 ✓ Configuration complete!
 
-Step 5: Test Connection to F5
+## Step 5: Test Connection to F5
 5.1 Test basic connectivity
 bash
 # Test connection to your F5
@@ -307,7 +310,7 @@ You should see your F5 device information including current version.
 ✓ Connection successful!
 
 
-Step 6: Run Pre-Upgrade Checks
+## Step 6: Run Pre-Upgrade Checks
 6.1 Run the pre-upgrade validation playbook
 bash
 ansible-playbook playbooks/pre_upgrade_checks.yml -i inventory/hosts_local.ini
@@ -372,7 +375,7 @@ Do NOT proceed to upgrade until all checks PASS
 
 ✓ Pre-upgrade checks complete!
 
-Step 7: Perform Upgrade
+## Step 7: Perform Upgrade
 ⚠️ IMPORTANT BEFORE PROCEEDING:
 ✓ All pre-upgrade checks PASSED
 
@@ -455,7 +458,8 @@ See "Troubleshooting" section below
 
 ✓ Upgrade complete!
 
-Step 8: Run Post-Upgrade Checks
+## Step 8: Run Post-Upgrade Checks
+
 8.1 Run the post-upgrade validation playbook
 bash
 ansible-playbook playbooks/post_upgrade_checks.yml -i inventory/hosts_local.ini
