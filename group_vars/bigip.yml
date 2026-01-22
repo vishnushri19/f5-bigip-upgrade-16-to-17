@@ -1,12 +1,60 @@
 ---
-# F5 BIG-IP Upgrade Variables
+# ============================================================================
+# F5 BIG-IP Upgrade Configuration Variables
+# ============================================================================
+# These variables control the upgrade process from BIG-IP 16.x to 17.x
+# Customize these values based on your environment
+# ============================================================================
 
+# ============================================================================
+# TARGET VERSION SETTINGS
+# ============================================================================
+
+# Target BIG-IP version to upgrade to
 bigip_version_target: "17.1.1.3"
+
+# Target BIG-IP ISO filename
 bigip_software_image: "BIGIP-17.1.1.3.0.0.6.iso"
+
+# URL where the BIG-IP ISO is hosted
+# Update this to your internal server or CDN location
+# Examples:
+#   - http://192.168.1.50/iso/BIGIP-17.1.1.3.0.0.6.iso
+#   - https://your-internal-server.com/f5-images/BIGIP-17.1.1.3.0.0.6.iso
+#   - http://10.0.0.1/bigip-images/BIGIP-17.1.1.3.0.0.6.iso
 bigip_software_url: "http://your-internal-server/BIGIP-17.1.1.3.0.0.6.iso"
+
+# ============================================================================
+# UPGRADE VOLUME SETTINGS
+# ============================================================================
+
+# Target boot volume for upgrade installation
+# Common values:
+#   - HD1.1 (Boot from HD1.1)
+#   - HD1.2 (Boot from HD1.2)
+#   - HD2.1 (For VIPRION systems)
+#   - HD2.2 (For VIPRION systems)
+# Note: Do NOT select the currently active boot volume
 bigip_target_volume: "HD1.2"
+
+# List of available volumes (used for validation)
+available_volumes:
+  - HD1.1
+  - HD1.2
+  - HD2.1
+  - HD2.2
+
+# ============================================================================
+# REBOOT AND TIMEOUT SETTINGS
+# ============================================================================
+
+# Automatically reboot after upgrade installation
 bigip_reboot_after_upgrade: true
+
+# Timeout (in seconds) to wait for device to come back online after reboot
+# Default: 3600 seconds (1 hour)
+# Increase for large systems or slow networks
 bigip_reboot_timeout: 3600
 
-# Pre-upgrade backups location
-backup_location: "/var/tmp/"
+# Time to wait (in seconds)
+
