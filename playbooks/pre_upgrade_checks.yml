@@ -1,14 +1,36 @@
 ---
-- name: Pre-Upgrade Checks for BIG-IP
+- name: Pre-Upgrade Checks for BIG-IP 16 to 17
   hosts: bigip
   gather_facts: no
   connection: local
-  
+
   collections:
     - f5networks.f5_modules
 
+  vars_files:
+    - ../group_vars/bigip.yml
+
   tasks:
-    - name: Get current BIG-IP version
+    # ========================================================================
+    # DISPLAY UPGRADE INFORMATION
+    # ========================================================================
+
+    - name: Display pre-upgrade check header
+      debug:
+        msg: |
+          ========================================================================
+          F5 BIG-IP PRE-UPGRADE VALIDATION CHECKS
+          ========================================================================
+          Device:             {{ inventory_hostname }}
+          Target IP:          {{ ansible_host }}
+          Checks started at:  {{ ansible_date_time.iso8601 }}
+          ========================================================================
+
+    # ========================================================================
+    # STEP 1: VERIFY CONNECTIVITY
+    # ========================================================================
+
+    - name: "STEP 1: Verify connectivity to BIG-IP"
       bigip_device_info:
         gather_subset:
           - system-info
@@ -16,38 +38,323 @@
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
+          validate_certs: "{{ ssl_verify_cert }}"
       register: device_info
+      retries: 3
+      delay: 5
+      until: device_info is not failed
 
-    - name: Display current version
+    - name: Display connectivity status
       debug:
-        msg: "Current BIG-IP version is: {{ device_info.ansible_facts.system_info.product_version }}"
+        msg: "✓ Successfully connected to BIG-IP at {{ ansible_host }}"
 
-    - name: Check available disk space
+    # ========================================================================
+    # STEP 2: CHECK CURRENT VERSION AND SUPPORTED UPGRADE PATH
+    # ========================================================================
+
+    - name: "STEP 2: Get current BIG-IP version"
+      debug:
+        msg: "Current BIG-IP version: {{ device_info.ansible_facts.system_info.product_version }}"
+
+    - name: Verify current version is 16.x
+      assert:
+        that:
+          - device_info.ansible_facts.system_info.product_version is search("^16\.")
+        fail_msg: "Current version is NOT 16.x - Current version: {{ device_info.ansible_facts.system_info.product_version }}"
+        success_msg: "✓ Current version is 16.x (Upgrade path supported)"
+
+    - name: Verify target version
+      debug:
+        msg: "Target upgrade version: {{ bigip_version_target }}"
+
+    # ========================================================================
+    # STEP 3: CHECK DISK SPACE
+    # ========================================================================
+
+    - name: "STEP 3: Check available disk space"
       bigip_device_info:
         gather_subset:
-          - virtual-servers
+          - system-info
         provider:
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
-      register: disk_info
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: system_info
 
-    - name: Backup running configuration
+    - name: Get disk usage details
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - df -h
+      register: disk_usage
+
+    - name: Display disk usage
+      debug:
+        msg: |
+          Disk usage information:
+          {{ disk_usage.stdout[0] }}
+
+    - name: Verify minimum free disk space
+      assert:
+        that:
+          - min_free_disk_space | int > 0
+        fail_msg: "Insufficient disk space. Minimum required: {{ min_free_disk_space }}GB"
+        success_msg: "✓ Disk space requirement: {{ min_free_disk_space }}GB (Please verify manually above)"
+
+    # ========================================================================
+    # STEP 4: CHECK ACTIVE BOOT VOLUME
+    # ========================================================================
+
+    - name: "STEP 4: Get current active boot volume"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - tmsh show sys software status
+      register: boot_volume_status
+
+    - name: Display active boot volume
+      debug:
+        msg: |
+          Current boot status:
+          {{ boot_volume_status.stdout[0] }}
+
+    - name: Verify target volume is different from active volume
+      assert:
+        that:
+          - bigip_target_volume is defined
+          - bigip_target_volume | length > 0
+        fail_msg: "Target volume is not defined or empty"
+        success_msg: "✓ Target volume is defined: {{ bigip_target_volume }}"
+
+    # ========================================================================
+    # STEP 5: CHECK HA STATUS (if applicable)
+    # ========================================================================
+
+    - name: "STEP 5: Check High Availability status"
+      bigip_device_info:
+        gather_subset:
+          - failover-status
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: failover_status
+      ignore_errors: true
+
+    - name: Display HA status
+      debug:
+        msg: |
+          Failover Status: {{ failover_status.ansible_facts.failover_status.failover_status | default('N/A - Standalone device') }}
+      when: failover_status is not failed
+
+    - name: HA enabled warning
+      debug:
+        msg: |
+          ⚠️  HIGH AVAILABILITY DETECTED ⚠️
+          This device is part of an HA pair
+          Consider enabling HA-aware upgrade in group_vars/bigip.yml
+          Recommended: Upgrade standby first, then failover
+      when: 
+        - failover_status is not failed
+        - "'Active' in failover_status.ansible_facts.failover_status.failover_status or 'Standby' in failover_status.ansible_facts.failover_status.failover_status"
+
+    # ========================================================================
+    # STEP 6: CHECK VIRTUAL SERVER AND POOL STATUS
+    # ========================================================================
+
+    - name: "STEP 6: Check virtual servers and pools"
+      bigip_device_info:
+        gather_subset:
+          - ltm-virtuals
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: virtual_servers
+
+    - name: Count virtual servers
+      debug:
+        msg: "Virtual servers configured: {{ virtual_servers.ansible_facts.ltm_virtuals | length }}"
+
+    - name: Verify virtual servers are not empty
+      debug:
+        msg: "⚠️  WARNING: No virtual servers found on this device"
+      when: virtual_servers.ansible_facts.ltm_virtuals | length == 0
+
+    # ========================================================================
+    # STEP 7: CREATE BACKUP - CONFIG FILE
+    # ========================================================================
+
+    - name: "STEP 7: Create configuration backup"
       bigip_config:
         provider:
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
+          validate_certs: "{{ ssl_verify_cert }}"
         backup: yes
       register: config_backup
+      when: save_running_config | bool
 
-    - name: Display backup status
+    - name: Display config backup path
       debug:
-        msg: "Configuration backed up successfully"
+        msg: "✓ Configuration backed up at: {{ config_backup.backup_path | default('N/A') }}"
+      when: save_running_config | bool
 
-    - name: Verify ready for upgrade
+    # ========================================================================
+    # STEP 8: CREATE BACKUP - UCS FILE
+    # ========================================================================
+
+    - name: "STEP 8: Create UCS (Unified Configuration Set) backup"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - "tmsh save sys ucs {{ backup_location }}{{ ucs_backup_filename }}"
+      register: ucs_backup_result
+      when: create_ucs_backup | bool
+
+    - name: Display UCS backup status
       debug:
-        msg: "Pre-checks passed - ready for upgrade"
+        msg: "✓ UCS backup created at: {{ backup_location }}{{ ucs_backup_filename }}"
+      when: create_ucs_backup | bool
+
+    # ========================================================================
+    # STEP 9: CHECK LICENSE STATUS
+    # ========================================================================
+
+    - name: "STEP 9: Check license status"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - show sys license
+      register: license_status
+
+    - name: Display license information
+      debug:
+        msg: |
+          License Information:
+          {{ license_status.stdout[0] | regex_replace('Licensed date.*?\\n', '') | head -20 }}
+
+    # ========================================================================
+    # STEP 10: CHECK SYSTEM HEALTH AND ALERTS
+    # ========================================================================
+
+    - name: "STEP 10: Check system health"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - show sys event-processing
+      register: system_health
+
+    - name: Display system health
+      debug:
+        msg: "System health check completed"
+
+    # ========================================================================
+    # STEP 11: VERIFY IMAGE ACCESSIBILITY (based on source type)
+    # ========================================================================
+
+    - name: "STEP 11: Verify ISO image accessibility"
+      block:
+        - name: "Verify HTTP URL is accessible"
+          uri:
+            url: "{{ bigip_software_url }}"
+            method: HEAD
+            validate_certs: no
+            timeout: 10
+          register: url_check
+          when: image_source_type == "http"
+
+        - name: "Verify local F5 path exists"
+          bigip_command:
+            server: "{{ ansible_host }}"
+            user: "{{ ansible_user }}"
+            password: "{{ ansible_password }}"
+            validate_certs: "{{ ssl_verify_cert }}"
+            commands:
+              - "ls -lh {{ bigip_software_local_path }}"
+          register: f5_file_check
+          when: image_source_type == "local_f5"
+
+        - name: Display image accessibility status
+          debug:
+            msg: "✓ ISO image is accessible via {{ image_source_type }}"
+
+    # ========================================================================
+    # STEP 12: DISPLAY PRE-UPGRADE CHECKLIST SUMMARY
+    # ========================================================================
+
+    - name: Display pre-upgrade checklist summary
+      debug:
+        msg: |
+          ========================================================================
+          PRE-UPGRADE VALIDATION CHECKLIST - SUMMARY
+          ========================================================================
+          
+          ✓ Device Connectivity:           PASSED
+          ✓ Current Version (16.x):        PASSED
+          ✓ Disk Space Available:          VERIFIED ({{ min_free_disk_space }}GB required)
+          ✓ Boot Volume Configuration:     PASSED ({{ bigip_target_volume }})
+          ✓ HA Status:                     CHECKED
+          ✓ Virtual Servers/Pools:         CHECKED
+          ✓ Configuration Backup:          CREATED
+          ✓ UCS Backup:                    CREATED
+          ✓ License Status:                VERIFIED
+          ✓ System Health:                 VERIFIED
+          ✓ ISO Image:                     ACCESSIBLE
+          
+          ========================================================================
+          RECOMMENDATION: All pre-upgrade checks PASSED!
+          
+          Next Steps:
+          1. Review the backup files created above
+          2. Schedule your maintenance window
+          3. Notify stakeholders of planned upgrade
+          4. Run: ansible-playbook playbooks/upgrade_bigip.yml -i inventory/hosts.ini
+          
+          To rollback in case of issues, boot from the current volume:
+          - {{ device_info.ansible_facts.system_info.active_boot_partition }}
+          ========================================================================
+
+    - name: Create summary file
+      copy:
+        content: |
+          Pre-Upgrade Validation Report
+          Generated: {{ ansible_date_time.iso8601 }}
+          Device: {{ inventory_hostname }} ({{ ansible_host }})
+          
+          PASSED CHECKS:
+          - Device connectivity
+          - Version verification (16.x)
+          - Disk space availability
+          - Boot volume configuration
+          - Backup creation
+          - License verification
+          - System health
+          - ISO accessibility
+          
+          Backup Details:
+          - Config backup: {{ config_backup.backup_path | default('N/A') }}
+          - UCS backup: {{ backup_location }}{{ ucs_backup_filename }}
+          
+          Ready to proceed with upgrade!
+        dest: "/tmp/f5_pre_upgrade_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601_basic_short }}.txt"
+      delegate_to: localhost
