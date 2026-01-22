@@ -18,6 +18,23 @@ f5-bigip-upgrade-16-to-17/
 ├── .gitignore                 # Files to exclude from Git
 └── README.md                  # Project documentation
 
+## 📁 Project Structure
+
+```text
+f5-bigip-upgrade-16-to-17/
+├── inventory/
+│   └── hosts.ini              # BIG-IP device inventory
+├── group_vars/
+│   └── bigip.yml              # BIG-IP upgrade variables
+├── playbooks/
+│   ├── pre_upgrade_checks.yml # Pre-upgrade validation
+│   ├── upgrade_bigip.yml      # Main upgrade playbook
+│   └── post_upgrade_checks.yml# Post-upgrade verification
+├── ansible.cfg                # Ansible configuration
+├── requirements.yml           # Ansible dependencies
+├── .gitignore                 # Files to exclude from Git
+└── README.md                  # Project documentation
+
 
 ## ⚙️ Prerequisites
 
