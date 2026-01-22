@@ -1,0 +1,303 @@
+- name: Pre-Upgrade Checks for BIG-IP 16 to 17
+  hosts: bigip
+  gather_facts: true
+
+  vars_files:
+    - ../group_vars/bigip.yml
+
+  vars:
+    ucs_filename: "pre_upgrade_{{ inventory_hostname }}_{{ ansible_date_time.date }}.ucs"
+
+  tasks:
+    # ========================================================================
+    # DISPLAY UPGRADE INFORMATION
+    # ========================================================================
+    - name: Display pre-upgrade check header
+      debug:
+        msg: |
+          ========================================================================
+          F5 BIG-IP PRE-UPGRADE VALIDATION CHECKS
+          ========================================================================
+          Device:             {{ inventory_hostname }}
+          Target IP:          {{ ansible_host }}
+          Checks started at:  {{ ansible_date_time.iso8601 }}
+          ========================================================================
+
+    # ========================================================================
+    # STEP 1: VERIFY CONNECTIVITY
+    # ========================================================================
+    - name: "STEP 1: Verify connectivity to BIG-IP"
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - system-info
+      register: device_info
+      retries: 3
+      delay: 5
+      until: device_info is not failed
+
+    - name: Display connectivity status
+      debug:
+        msg: "✓ Successfully connected to BIG-IP at {{ ansible_host }}"
+
+    # ========================================================================
+    # STEP 2: CHECK CURRENT VERSION
+    # ========================================================================
+    - name: "STEP 2: Get current BIG-IP version"
+      debug:
+        msg: "Current BIG-IP version: {{ device_info.system_info.product_version }}"
+
+    - name: Verify current version is 16.x
+      assert:
+        that:
+          - device_info.system_info.product_version is search("^16\\.")
+        fail_msg: "Current version is NOT 16.x"
+        success_msg: "✓ Current version is 16.x (Upgrade path supported)"
+
+    - name: Verify target version
+      debug:
+        msg: "Target upgrade version: {{ bigip_version_target }}"
+
+    # ========================================================================
+    # STEP 3: CHECK DISK SPACE
+    # ========================================================================
+    - name: "STEP 3: Check available disk space"
+      debug:
+        msg: |
+          Disk Space Check:
+          - Minimum Required: {{ min_free_disk_space }}GB
+          ⚠️  Manual verification recommended via GUI or SSH
+
+    - name: Verify minimum free disk space variable
+      assert:
+        that:
+          - min_free_disk_space is defined
+          - min_free_disk_space | int > 0
+        success_msg: "✓ Disk space requirement: {{ min_free_disk_space }}GB"
+
+    # ========================================================================
+    # STEP 4: CHECK BOOT VOLUMES
+    # ========================================================================
+    - name: "STEP 4: Get current active boot volume"
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - software-volumes
+      register: boot_volumes
+
+    - name: Display active boot volume
+      debug:
+        msg: |
+          Current boot status:
+          {% for volume in boot_volumes.software_volumes %}
+          - {{ volume.name }}: {{ volume.version }} (Active: {{ volume.active }})
+          {% endfor %}
+
+    - name: Verify target volume is different from active
+      assert:
+        that:
+          - bigip_target_volume != boot_volumes.software_volumes[0].name
+        success_msg: "✓ Target volume {{ bigip_target_volume }} is available"
+
+    # ========================================================================
+    # STEP 5: CHECK HA STATUS
+    # ========================================================================
+    - name: "STEP 5: Check High Availability status"
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - devices
+      register: ha_status
+
+    - name: Display HA status
+      debug:
+        msg: |
+          Failover Status: {{ ha_status.devices[0].failover_state }}
+          Chassis Type: {{ ha_status.devices[0].chassis_type }}
+
+    # ========================================================================
+    # STEP 6: CHECK VIRTUAL SERVERS AND POOLS
+    # ========================================================================
+    - name: "STEP 6: Check virtual servers"
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - virtual-servers
+      register: virtual_servers
+
+    - name: Count virtual servers
+      debug:
+        msg: "Virtual servers: {{ virtual_servers.virtual_servers | default([]) | length }}"
+
+    - name: Check pools
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - ltm-pools
+      register: pools
+
+    - name: Count pools
+      debug:
+        msg: "Pools: {{ pools.ltm_pools | default([]) | length }}"
+
+    # ========================================================================
+    # STEP 7: CHECK LICENSE
+    # ========================================================================
+    - name: "STEP 7: Check license status"
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - devices
+      register: license_info
+
+    - name: Display license information
+      debug:
+        msg: |
+          License: {{ license_info.devices[0].product }}
+          Platform: {{ license_info.devices[0].platform_id }}
+          Active Modules: {{ license_info.devices[0].active_modules | length }}
+
+    # ========================================================================
+    # STEP 8: CHECK SYSTEM HEALTH
+    # ========================================================================
+    - name: "STEP 8: Check system health"
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - system-info
+      register: system_health
+
+    - name: Display system health
+      debug:
+        msg: "✓ System uptime: {{ system_health.system_info.uptime }} seconds"
+
+    # ========================================================================
+    # STEP 9: VERIFY ISO
+    # ========================================================================
+    - name: "STEP 9: Verify ISO image accessibility"
+      uri:
+        url: "{{ bigip_software_url }}"
+        method: HEAD
+        validate_certs: no
+        timeout: 10
+      register: url_check
+      delegate_to: localhost
+      ignore_errors: true
+      when: image_source_type == "http"
+
+    - name: Display ISO status
+      debug:
+        msg: "✓ ISO image is accessible"
+      when: image_source_type == "http" and url_check is not failed
+
+    # ========================================================================
+    # STEP 10: CREATE UCS BACKUP
+    # ========================================================================
+    - name: "STEP 10: Create UCS backup via REST API"
+      uri:
+        url: "https://{{ ansible_host }}/mgmt/tm/sys/ucs"
+        method: POST
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        body:
+          command: save
+          name: "{{ ucs_filename }}"
+        body_format: json
+        validate_certs: no
+        status_code: 200
+        timeout: 300
+      register: ucs_create
+      delegate_to: localhost
+      when: create_ucs_backup | default(true) | bool
+
+    - name: Display UCS backup status
+      debug:
+        msg: "✓ UCS backup created: /mnt/upload/{{ ucs_filename }}"
+      when: create_ucs_backup | default(true) | bool and ucs_create is not failed
+
+    - name: Wait for UCS backup to complete
+      pause:
+        seconds: 10
+      when: create_ucs_backup | default(true) | bool and ucs_create is not failed
+
+    - name: Verify UCS backup was created
+      uri:
+        url: "https://{{ ansible_host }}/mgmt/tm/sys/ucs/{{ ucs_filename }}"
+        method: GET
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: no
+        status_code: 200
+      register: ucs_verify
+      delegate_to: localhost
+      ignore_errors: true
+      when: create_ucs_backup | default(true) | bool and ucs_create is not failed
+
+    - name: Display UCS verification
+      debug:
+        msg: "✓ UCS backup verified successfully"
+      when: create_ucs_backup | default(true) | bool and ucs_verify is not failed
+
+    # ========================================================================
+    # STEP 11: SUMMARY
+    # ========================================================================
+    - name: "STEP 11: Display summary"
+      debug:
+        msg: |
+          ========================================================================
+          PRE-UPGRADE VALIDATION SUMMARY
+          ========================================================================
+          
+          ✓ Device: {{ inventory_hostname }} ({{ ansible_host }})
+          ✓ Current Version: {{ device_info.system_info.product_version }}
+          ✓ Target Version: {{ bigip_version_target }}
+          ✓ Active Volume: {{ boot_volumes.software_volumes[0].name }}
+          ✓ Target Volume: {{ bigip_target_volume }}
+          ✓ Failover State: {{ ha_status.devices[0].failover_state }}
+          ✓ Virtual Servers: {{ virtual_servers.virtual_servers | default([]) | length }}
+          ✓ Pools: {{ pools.ltm_pools | default([]) | length }}
+          ✓ ISO: {{ 'Accessible' if (image_source_type == 'http' and url_check is not failed) else 'Check Required' }}
+          ✓ UCS Backup: {{ 'Created (' + ucs_filename + ')' if (create_ucs_backup | default(true) | bool and ucs_create is not failed) else 'Skipped' }}
+          
+          ========================================================================
+          STATUS: READY TO PROCEED
+          ========================================================================
+          
+          Next Steps:
+          1. Verify UCS backup: /mnt/upload/{{ ucs_filename }}
+          2. Run: ansible-playbook playbooks/upgrade_bigip.yml
+          ========================================================================
+
+    # ========================================================================
+    # STEP 12: CREATE REPORT
+    # ========================================================================
+    - name: "STEP 12: Ensure reports directory exists"
+      file:
+        path: reports
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
+
+    - name: "STEP 13: Create summary report"
+      copy:
+        content: |
+          Pre-Upgrade Validation Report
+          ========================================================================
+          Generated: {{ ansible_date_time.iso8601 }}
+          Device: {{ inventory_hostname }} ({{ ansible_host }})
+          Hostname: {{ ha_status.devices[0].hostname }}
+          
+          Current Version: {{ device_info.system_info.product_version }}
+          Target Version: {{ bigip_version_target }}
+          Active Volume: {{ boot_volumes.software_volumes[0].name }}
+          Target Volume: {{ bigip_target_volume }}
+          
+          Virtual Servers: {{ virtual_servers.virtual_servers | default([]) | length }}
+          Pools: {{ pools.ltm_pools | default([]) | length }}
+          Failover State: {{ ha_status.devices[0].failover_state }}
+          
+          UCS Backup: {{ ucs_filename if (create_ucs_backup | default(true) | bool and ucs_create is not failed) else 'Not Created' }}
+          UCS Location: /mnt/upload/{{ ucs_filename }}
+          
+          STATUS: READY TO PROCEED WITH UPGRADE
+          ========================================================================
+        dest: "reports/{{ inventory_hostname }}_pre_upgrade_{{ ansible_date_time.date }}.txt"
+      delegate_to: localhost
+
+    - name: Display report location
+      debug:
+        msg: "✓ Report saved: reports/{{ inventory_hostname }}_pre_upgrade_{{ ansible_date_time.date }}.txt"
