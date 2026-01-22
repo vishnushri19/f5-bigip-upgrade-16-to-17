@@ -1,8 +1,12 @@
-F5 BIG-IP 16 → 17 Upgrade Automation
+# F5 BIG-IP 16 → 17 Upgrade Automation
 
 An Ansible-based automation framework for upgrading F5 BIG-IP systems from version 16.x to 17.x, including pre-checks, UCS backup, upgrade execution, and post-upgrade validation.
 
-📁 Project Structure
+---
+
+## 📁 Project Structure
+
+```text
 f5-bigip-upgrade-16-to-17/
 ├── inventory/
 │   └── hosts.ini.example        # Inventory template (copy to hosts.ini and fill in)
@@ -21,23 +25,17 @@ f5-bigip-upgrade-16-to-17/
 ├── README.md                    # Project overview
 └── SETUP.md                     # Detailed setup instructions
 
-🚀 Quick Start
+## 🚀 **Quick Start**
+New to this project? Start here:
 
-New to this project? Follow these steps in order:
+Installation Guide
+Clone Repository
+Configure Environment
+Test Connection
+Run Pre-Upgrade Checks
+Run Upgrade
 
-Installation & environment setup
-
-Inventory configuration
-
-Test device connectivity
-
-Run pre-upgrade checks
-
-Execute the upgrade
-
-Perform post-upgrade validation
-
-⚙️ Prerequisites
+## ⚙️ **Prerequisites**
 
 Python 3.12+ (recommended)
 
@@ -51,7 +49,7 @@ BIG-IP 17.x ISO image
 
 Existing BIG-IP system running 16.x
 
-📦 Installation
+## 📦 **Installation**
 1. Create and activate a virtual environment
 python3.12 -m venv venv
 source venv/bin/activate
@@ -62,7 +60,7 @@ pip install ansible-core==2.15.13
 3. Install required collections
 ansible-galaxy collection install -r requirements.yml
 
-📝 Inventory Setup
+## 📝 **Inventory Setup**
 
 Copy the inventory template and populate it with your device details:
 
@@ -73,7 +71,7 @@ vi inventory/hosts.ini
 ⚠️ Never commit your real hosts.ini to Git.
 Only hosts.ini.example should be version-controlled.
 
-🛠️ Usage
+## 🛠️ **Usage**
 Test connection
 ansible-playbook playbooks/test_connection.yml
 
@@ -101,7 +99,7 @@ The upgrade playbook must be customized for your environment (image name, volume
 Post-upgrade validation
 ansible-playbook playbooks/post_upgrade_checks.yml
 
-🛡️ Security & Best Practices
+## 🛡️ **Security & Best Practices**
 
 .gitignore protects credentials, virtual environments, and reports
 
@@ -109,7 +107,7 @@ Never commit real inventory files
 
 Reports and logs remain local and are excluded from Git
 
-📝 Notes
+## 📝 **Notes**
 
 On macOS, set this before running Ansible:
 
@@ -122,7 +120,7 @@ HTTPAPI connection is used throughout
 
 Pre-upgrade checks include UCS backup creation via REST API
 
-📚 References
+## 📚 **References**
 
 F5 BIG-IP Upgrade Documentation
 
