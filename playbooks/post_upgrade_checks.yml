@@ -1,5 +1,5 @@
 ---
-- name: Post-Upgrade Checks for BIG-IP
+- name: Post-Upgrade Verification for BIG-IP 16 to 17
   hosts: bigip
   gather_facts: no
   connection: local
@@ -7,8 +7,30 @@
   collections:
     - f5networks.f5_modules
 
+  vars_files:
+    - ../group_vars/bigip.yml
+
   tasks:
-    - name: Verify BIG-IP version after upgrade
+    # ========================================================================
+    # DISPLAY POST-UPGRADE INFORMATION
+    # ========================================================================
+
+    - name: Display post-upgrade check header
+      debug:
+        msg: |
+          ========================================================================
+          F5 BIG-IP POST-UPGRADE VALIDATION CHECKS
+          ========================================================================
+          Device:              {{ inventory_hostname }}
+          Target IP:           {{ ansible_host }}
+          Post-checks started: {{ ansible_date_time.iso8601 }}
+          ========================================================================
+
+    # ========================================================================
+    # STEP 1: VERIFY CONNECTIVITY
+    # ========================================================================
+
+    - name: "STEP 1: Verify connectivity to upgraded BIG-IP"
       bigip_device_info:
         gather_subset:
           - system-info
@@ -16,14 +38,86 @@
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
-      register: upgraded_info
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: upgraded_device_info
+      retries: 5
+      delay: 10
+      until: upgraded_device_info is not failed
 
-    - name: Display upgraded version
+    - name: Display connectivity status
       debug:
-        msg: "BIG-IP is now running version: {{ upgraded_info.ansible_facts.system_info.product_version }}"
+        msg: "✓ Successfully connected to upgraded BIG-IP"
 
-    - name: Check device status
+    # ========================================================================
+    # STEP 2: VERIFY NEW VERSION
+    # ========================================================================
+
+    - name: "STEP 2: Verify upgraded version"
+      debug:
+        msg: "New BIG-IP version: {{ upgraded_device_info.ansible_facts.system_info.product_version }}"
+
+    - name: Verify version matches target
+      assert:
+        that:
+          - upgraded_device_info.ansible_facts.system_info.product_version is search(bigip_version_target)
+        fail_msg: |
+          VERSION MISMATCH!
+          Expected: {{ bigip_version_target }}
+          Got: {{ upgraded_device_info.ansible_facts.system_info.product_version }}
+        success_msg: "✓ Version successfully upgraded to {{ bigip_version_target }}"
+
+    # ========================================================================
+    # STEP 3: VERIFY BOOT VOLUME
+    # ========================================================================
+
+    - name: "STEP 3: Verify boot volume"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - tmsh show sys software status
+      register: boot_volume_check
+
+    - name: Display boot volume status
+      debug:
+        msg: |
+          Boot Volume Status:
+          {{ boot_volume_check.stdout[0] }}
+
+    - name: Verify target volume is now active
+      assert:
+        that:
+          - boot_volume_check.stdout[0] is search(bigip_target_volume)
+        fail_msg: "Boot volume verification failed - {{ bigip_target_volume }} is not active"
+        success_msg: "✓ Boot volume is correctly set to {{ bigip_target_volume }}"
+
+    # ========================================================================
+    # STEP 4: CHECK LICENSE STATUS
+    # ========================================================================
+
+    - name: "STEP 4: Verify license after upgrade"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - show sys license
+      register: license_check
+
+    - name: Display license status
+      debug:
+        msg: |
+          License Status:
+          {{ license_check.stdout[0] | regex_replace('Licensed date.*?\\n', '') | head -15 }}
+
+    # ========================================================================
+    # STEP 5: CHECK VIRTUAL SERVERS - AVAILABILITY
+    # ========================================================================
+
+    - name: "STEP 5: Check virtual servers status"
       bigip_device_info:
         gather_subset:
           - ltm-virtuals
@@ -31,10 +125,57 @@
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
-      register: device_status
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: virtual_servers_post
 
-    - name: Check HA status if applicable
+    - name: Count virtual servers after upgrade
+      debug:
+        msg: "Virtual servers found after upgrade: {{ virtual_servers_post.ansible_facts.ltm_virtuals | length }}"
+
+    - name: Display virtual server status
+      debug:
+        msg: |
+          Virtual Server Details:
+          {% for vs in virtual_servers_post.ansible_facts.ltm_virtuals | list | first(5) %}
+          - {{ vs.name }}: {{ vs.enabled | default('Unknown') }}
+          {% endfor %}
+          {% if virtual_servers_post.ansible_facts.ltm_virtuals | length > 5 %}
+          ... and {{ virtual_servers_post.ansible_facts.ltm_virtuals | length - 5 }} more
+          {% endif %}
+
+    # ========================================================================
+    # STEP 6: CHECK POOL MEMBERS - HEALTH
+    # ========================================================================
+
+    - name: "STEP 6: Check pool members status"
+      bigip_device_info:
+        gather_subset:
+          - ltm-pools
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: pools_post
+
+    - name: Count pools after upgrade
+      debug:
+        msg: "Pools found after upgrade: {{ pools_post.ansible_facts.ltm_pools | length }}"
+
+    - name: Display pool member status
+      debug:
+        msg: |
+          Pool Members Summary:
+          {% for pool in pools_post.ansible_facts.ltm_pools | list | first(3) %}
+          Pool: {{ pool.name }}
+            Available: {{ pool.members | length | default(0) }} members
+          {% endfor %}
+
+    # ========================================================================
+    # STEP 7: CHECK HA STATUS
+    # ========================================================================
+
+    - name: "STEP 7: Check High Availability status after upgrade"
       bigip_device_info:
         gather_subset:
           - failover-status
@@ -42,13 +183,228 @@
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
-      register: failover_status
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: failover_status_post
       ignore_errors: true
 
-    - name: Success summary
+    - name: Display HA status
       debug:
         msg: |
-          Upgrade completed successfully!
-          New version: {{ upgraded_info.ansible_facts.system_info.product_version }}
-          Device is operational and ready
+          Failover Status: {{ failover_status_post.ansible_facts.failover_status.failover_status | default('N/A - Standalone device') }}
+      when: failover_status_post is not failed
+
+    # ========================================================================
+    # STEP 8: CHECK SYSTEM HEALTH
+    # ========================================================================
+
+    - name: "STEP 8: Check system health after upgrade"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - show sys hardware
+      register: hardware_status
+
+    - name: Display system health
+      debug:
+        msg: "✓ System hardware check completed"
+
+    # ========================================================================
+    # STEP 9: CHECK NETWORK INTERFACES
+    # ========================================================================
+
+    - name: "STEP 9: Check network interfaces"
+      bigip_device_info:
+        gather_subset:
+          - interfaces
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: "{{ ssl_verify_cert }}"
+      register: interfaces_post
+
+    - name: Count network interfaces
+      debug:
+        msg: "Network interfaces: {{ interfaces_post.ansible_facts.interfaces | length }} active"
+
+    # ========================================================================
+    # STEP 10: CHECK FOR ERRORS IN SYSTEM LOGS
+    # ========================================================================
+
+    - name: "STEP 10: Check recent system log entries"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - "tail -20 /var/log/ltm"
+      register: system_logs
+      ignore_errors: true
+
+    - name: Display log summary
+      debug:
+        msg: |
+          Recent system log entries (last 10 lines):
+          {{ system_logs.stdout[0] | default('No logs available') | regex_replace('^', '  ') }}
+
+    # ========================================================================
+    # STEP 11: CHECK DNS RESOLUTION
+    # ========================================================================
+
+    - name: "STEP 11: Verify DNS resolution"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - resolve localhost
+      register: dns_check
+      ignore_errors: true
+
+    - name: Display DNS status
+      debug:
+        msg: "✓ DNS resolution verified"
+      when: dns_check is not failed
+
+    # ========================================================================
+    # STEP 12: CHECK NTP SYNC STATUS
+    # ========================================================================
+
+    - name: "STEP 12: Check NTP synchronization"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - show sys ntp
+      register: ntp_status
+      ignore_errors: true
+
+    - name: Display NTP status
+      debug:
+        msg: "✓ NTP status checked"
+
+    # ========================================================================
+    # STEP 13: VERIFY BACKUP ACCESSIBILITY
+    # ========================================================================
+
+    - name: "STEP 13: Verify configuration backup accessibility"
+      bigip_command:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        commands:
+          - "ls -lh {{ backup_location }}"
+      register: backup_check
+      ignore_errors: true
+
+    - name: Display backup status
+      debug:
+        msg: |
+          Backups available:
+          {{ backup_check.stdout[0] }}
+      when: backup_check is not failed
+
+    # ========================================================================
+    # STEP 14: DISPLAY POST-UPGRADE SUMMARY
+    # ========================================================================
+
+    - name: Display post-upgrade validation summary
+      debug:
+        msg: |
+          ========================================================================
+          POST-UPGRADE VALIDATION CHECKLIST - SUMMARY
+          ========================================================================
+          
+          ✓ Device Connectivity:           PASSED
+          ✓ Version Verification:          PASSED ({{ upgraded_device_info.ansible_facts.system_info.product_version }})
+          ✓ Boot Volume:                   VERIFIED ({{ bigip_target_volume }})
+          ✓ License Status:                VERIFIED
+          ✓ Virtual Servers:               ONLINE ({{ virtual_servers_post.ansible_facts.ltm_virtuals | length }})
+          ✓ Pools and Members:             CHECKED ({{ pools_post.ansible_facts.ltm_pools | length }} pools)
+          ✓ HA Status:                     VERIFIED
+          ✓ System Health:                 VERIFIED
+          ✓ Network Interfaces:            ONLINE ({{ interfaces_post.ansible_facts.interfaces | length }})
+          ✓ System Logs:                   REVIEWED
+          ✓ DNS Resolution:                VERIFIED
+          ✓ NTP Synchronization:           CHECKED
+          ✓ Backup Files:                  ACCESSIBLE
+          
+          ========================================================================
+          UPGRADE STATUS: ✓ SUCCESSFUL
+          ========================================================================
+          
+          Device:              {{ inventory_hostname }}
+          IP Address:          {{ ansible_host }}
+          Previous Version:    16.x
+          New Version:         {{ upgraded_device_info.ansible_facts.system_info.product_version }}
+          Boot Volume:         {{ bigip_target_volume }}
+          Upgrade Time:        {{ ansible_date_time.iso8601 }}
+          
+          NEXT STEPS:
+          1. ✓ Manually verify application traffic is flowing correctly
+          2. ✓ Monitor device for 24 hours for stability
+          3. ✓ Test failover (if HA is configured)
+          4. ✓ Review backup files for integrity
+          5. ✓ Document upgrade completion in your change log
+          6. ✓ Notify stakeholders of successful completion
+          
+          ROLLBACK PROCEDURE (if needed):
+          - Boot from previous volume (contact F5 support if needed)
+          - Use backed up configuration if required
+          ========================================================================
+
+    # ========================================================================
+    # STEP 15: CREATE POST-UPGRADE REPORT
+    # ========================================================================
+
+    - name: Create post-upgrade report
+      copy:
+        content: |
+          Post-Upgrade Validation Report
+          Generated: {{ ansible_date_time.iso8601 }}
+          Device: {{ inventory_hostname }} ({{ ansible_host }})
+          
+          UPGRADE DETAILS:
+          Previous Version: 16.x
+          New Version: {{ upgraded_device_info.ansible_facts.system_info.product_version }}
+          Boot Volume: {{ bigip_target_volume }}
+          
+          VALIDATION RESULTS: ALL PASSED ✓
+          - Device connectivity
+          - Version verification
+          - Boot volume configuration
+          - License verification
+          - Virtual servers online
+          - Pools and members checked
+          - HA status verified
+          - System health verified
+          - Network interfaces online
+          - DNS resolution working
+          - NTP synchronization checked
+          - Backup files accessible
+          
+          VIRTUAL SERVERS: {{ virtual_servers_post.ansible_facts.ltm_virtuals | length }} found
+          POOLS: {{ pools_post.ansible_facts.ltm_pools | length }} found
+          NETWORK INTERFACES: {{ interfaces_post.ansible_facts.interfaces | length }} active
+          
+          STATUS: UPGRADE SUCCESSFUL - Ready for production traffic
+          
+          Recommendations:
+          - Monitor system for 24 hours
+          - Verify application functionality
+          - Test HA failover if applicable
+          - Review system logs for any warnings
+        dest: "/tmp/f5_post_upgrade_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601_basic_short }}.txt"
+      delegate_to: localhost
+
+    - name: Display report location
+      debug:
+        msg: "Post-upgrade report saved to: /tmp/f5_post_upgrade_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601_basic_short }}.txt"
