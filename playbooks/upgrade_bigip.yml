@@ -11,6 +11,31 @@
     - ../group_vars/bigip.yml
 
   tasks:
+    # ========================================================================
+    # PRE-UPGRADE INFORMATION
+    # ========================================================================
+
+    - name: Display upgrade information
+      debug:
+        msg: |
+          ========================================================================
+          F5 BIG-IP Upgrade Process Started
+          ========================================================================
+          Target Device:      {{ inventory_hostname }}
+          Target IP:          {{ ansible_host }}
+          Current Connection: {{ ansible_connection }}
+          
+          Upgrade Details:
+          - Source Version:   16.x
+          - Target Version:   {{ bigip_version_target }}
+          - Target Volume:    {{ bigip_target_volume }}
+          - Image Source:     {{ image_source_type }}
+          ========================================================================
+
+    # ========================================================================
+    # GET CURRENT DEVICE INFO
+    # ========================================================================
+
     - name: Get current BIG-IP info
       bigip_device_info:
         gather_subset:
@@ -19,64 +44,139 @@
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
+          validate_certs: "{{ ssl_verify_cert }}"
       register: bigip_current_version
 
     - name: Display current version
       debug:
-        msg: "Current version: {{ bigip_current_version.ansible_facts.system_info.product_version }}"
+        msg: "Current BIG-IP version: {{ bigip_current_version.ansible_facts.system_info.product_version }}"
 
-    - name: Upload software image to BIG-IP
+    # ========================================================================
+    # CREATE PRE-UPGRADE BACKUP
+    # ========================================================================
+
+    - name: Create UCS backup before upgrade
+      bigip_config:
+        provider:
+          server: "{{ ansible_host }}"
+          user: "{{ ansible_user }}"
+          password: "{{ ansible_password }}"
+          validate_certs: "{{ ssl_verify_cert }}"
+        backup: yes
+      register: config_backup
+      when: create_ucs_backup | bool
+
+    - name: Display backup status
+      debug:
+        msg: "Configuration backed up successfully"
+      when: create_ucs_backup | bool
+
+    # ========================================================================
+    # HANDLE DIFFERENT IMAGE SOURCES
+    # ========================================================================
+
+    # OPTION 1: Download from HTTP server
+    - name: "OPTION 1: Upload software image from HTTP server"
       bigip_software_image:
         server: "{{ ansible_host }}"
         user: "{{ ansible_user }}"
         password: "{{ ansible_password }}"
-        validate_certs: no
+        validate_certs: "{{ ssl_verify_cert }}"
         source: "{{ bigip_software_url }}"
       register: upload_result
+      when: image_source_type == "http"
+      retries: "{{ image_upload_retries }}"
+      delay: "{{ image_upload_retry_delay }}"
 
-    - name: Display upload status
+    - name: Display HTTP upload status
       debug:
-        msg: "Software image uploaded successfully"
+        msg: "Software image downloaded from HTTP server successfully"
+      when: image_source_type == "http"
+
+    # OPTION 2: Copy from local control node
+    - name: "OPTION 2: Upload software image from local control node"
+      bigip_software_image:
+        server: "{{ ansible_host }}"
+        user: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: "{{ ssl_verify_cert }}"
+        source: "{{ bigip_software_local_path }}"
+      register: upload_result
+      when: image_source_type == "local_control_node"
+      retries: "{{ image_upload_retries }}"
+      delay: "{{ image_upload_retry_delay }}"
+
+    - name: Display local control node upload status
+      debug:
+        msg: "Software image uploaded from local control node successfully"
+      when: image_source_type == "local_control_node"
+
+    # OPTION 3: Image already on F5 device
+    - name: "OPTION 3: Use image already on F5 device"
+      debug:
+        msg: "Using existing image at {{ bigip_software_local_path }} on F5 device"
+      when: image_source_type == "local_f5"
+
+    # ========================================================================
+    # WAIT FOR IMAGE PROCESSING
+    # ========================================================================
 
     - name: Wait for image processing
       pause:
-        seconds: 30
+        seconds: "{{ image_upload_wait_time }}"
+      when: image_source_type != "local_f5"
+
+    # ========================================================================
+    # INSTALL SOFTWARE ON TARGET VOLUME
+    # ========================================================================
 
     - name: Install software on target volume
       bigip_software_update:
         server: "{{ ansible_host }}"
         user: "{{ ansible_user }}"
         password: "{{ ansible_password }}"
-        validate_certs: no
+        validate_certs: "{{ ssl_verify_cert }}"
         volume: "{{ bigip_target_volume }}"
       register: install_result
+      retries: "{{ api_retries }}"
+      delay: "{{ api_retry_delay }}"
 
     - name: Display installation status
       debug:
-        msg: "Software installed on volume {{ bigip_target_volume }}"
+        msg: "Software installed on volume {{ bigip_target_volume }} successfully"
+
+    # ========================================================================
+    # REBOOT DEVICE
+    # ========================================================================
 
     - name: Reboot BIG-IP
       bigip_command:
         server: "{{ ansible_host }}"
         user: "{{ ansible_user }}"
         password: "{{ ansible_password }}"
-        validate_certs: no
+        validate_certs: "{{ ssl_verify_cert }}"
         commands:
           - tmsh reboot
       register: reboot_result
       ignore_errors: true
+      when: bigip_reboot_after_upgrade | bool
 
-    - name: Wait for BIG-IP to reboot (120 seconds)
+    - name: Wait for reboot to initiate
       pause:
-        seconds: 120
+        seconds: "{{ bigip_reboot_wait_time }}"
+      when: bigip_reboot_after_upgrade | bool
 
     - name: Wait for device to come back online
       wait_for:
         host: "{{ ansible_host }}"
         port: 443
-        delay: 30
-        timeout: 600
+        delay: "{{ bigip_device_online_delay }}"
+        timeout: "{{ bigip_reboot_timeout }}"
+      when: bigip_reboot_after_upgrade | bool
+
+    # ========================================================================
+    # VERIFY UPGRADE
+    # ========================================================================
 
     - name: Verify upgraded version
       bigip_device_info:
@@ -86,9 +186,49 @@
           server: "{{ ansible_host }}"
           user: "{{ ansible_user }}"
           password: "{{ ansible_password }}"
-          validate_certs: no
+          validate_certs: "{{ ssl_verify_cert }}"
       register: bigip_new_version
+      retries: "{{ api_retries }}"
+      delay: "{{ api_retry_delay }}"
 
     - name: Display new version
       debug:
-        msg: "Upgrade complete! New version: {{ bigip_new_version.ansible_facts.system_info.product_version }}"
+        msg: |
+          ========================================================================
+          Upgrade completed successfully!
+          ========================================================================
+          Previous version: {{ bigip_current_version.ansible_facts.system_info.product_version }}
+          New version:      {{ bigip_new_version.ansible_facts.system_info.product_version }}
+          Target volume:    {{ bigip_target_volume }}
+          ========================================================================
+
+    - name: Verify version matches target
+      assert:
+        that:
+          - bigip_new_version.ansible_facts.system_info.product_version is search(bigip_version_target)
+        fail_msg: "Version verification failed! Expected {{ bigip_version_target }}"
+        success_msg: "Version verification passed!"
+
+    # ========================================================================
+    # POST-UPGRADE SUMMARY
+    # ========================================================================
+
+    - name: Final upgrade summary
+      debug:
+        msg: |
+          ========================================================================
+          UPGRADE COMPLETED SUCCESSFULLY!
+          ========================================================================
+          Device:          {{ inventory_hostname }} ({{ ansible_host }})
+          Previous ver:    {{ bigip_current_version.ansible_facts.system_info.product_version }}
+          Current ver:     {{ bigip_new_version.ansible_facts.system_info.product_version }}
+          Boot volume:     {{ bigip_target_volume }}
+          Backup created:  {{ config_backup.backup_path | default('N/A') }}
+          Timestamp:       {{ ansible_date_time.iso8601 }}
+          
+          Next steps:
+          1. Verify all services are running correctly
+          2. Run post-upgrade validation playbook
+          3. Update documentation with new version
+          4. Monitor system for 24 hours
+          ========================================================================
