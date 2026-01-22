@@ -107,7 +107,7 @@ Never commit real inventory files
 
 Reports and logs remain local and are excluded from Git
 
-## 📝 **Notes**
+## 📝 Notes
 
 On macOS, set this before running Ansible:
 
