@@ -1,0 +1,12 @@
+---
+# F5 BIG-IP Upgrade Variables
+
+bigip_version_target: "17.1.1.3"
+bigip_software_image: "BIGIP-17.1.1.3.0.0.6.iso"
+bigip_software_url: "http://your-internal-server/BIGIP-17.1.1.3.0.0.6.iso"
+bigip_target_volume: "HD1.2"
+bigip_reboot_after_upgrade: true
+bigip_reboot_timeout: 3600
+
+# Pre-upgrade backups location
+backup_location: "/var/tmp/"
