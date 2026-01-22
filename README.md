@@ -20,13 +20,30 @@ f5-bigip-upgrade-16-to-17/
 └── README.md                  # Project documentation
 
 
+## 🚀 Quick Start
+
+**New to this project?** Start here:
+
+1. [Installation Guide](SETUP.md#step-1-install-required-software)
+2. [Clone Repository](SETUP.md#step-2-clone-the-repository)
+3. [Configure Environment](SETUP.md#step-4-configure-your-environment)
+4. [Test Connection](SETUP.md#step-5-test-connection-to-f5)
+5. [Run Upgrade](SETUP.md#step-7-perform-upgrade)
+
+**Experienced users?** Jump to [Usage](#-usage) section below.
+
+---
+
 ## ⚙️ Prerequisites
 
-- Ansible 2.9 or higher
-- F5 Ansible collection: `f5networks.f5_modules`
-- Network access to F5 BIG-IP devices
-- BIG-IP software image ISO file (version 17.x)
-- Existing BIG-IP system running version 16.x
+Before starting, you need:
+
+- ✓ Ansible 2.9 or higher
+- ✓ F5 Ansible collection: `f5networks.f5_modules`
+- ✓ Network access to F5 BIG-IP devices
+- ✓ BIG-IP software image ISO file (version 17.x)
+- ✓ Existing BIG-IP system running version 16.x
+
 
 ## 📦 Installation
 
