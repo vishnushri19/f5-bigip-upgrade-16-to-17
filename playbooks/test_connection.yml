@@ -1,0 +1,15 @@
+---
+- name: Test F5 BIG-IP Connection
+  hosts: bigip
+  gather_facts: false
+  
+  tasks:
+    - name: Get BIG-IP system info
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - system-info
+      register: device_info
+    
+    - name: Display BIG-IP version
+      debug:
+        msg: "{{ inventory_hostname }} is running BIG-IP {{ device_info.system_info.product_version }}"
