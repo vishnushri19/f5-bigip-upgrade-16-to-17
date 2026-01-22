@@ -1,0 +1,15 @@
+---
+- name: Check BIG-IP Boot Volumes
+  hosts: bigip
+  gather_facts: false
+  
+  tasks:
+    - name: Get software volumes
+      f5networks.f5_bigip.bigip_device_info:
+        gather_subset:
+          - software-volumes
+      register: volumes
+    
+    - name: Display volumes
+      debug:
+        var: volumes.software_volumes
