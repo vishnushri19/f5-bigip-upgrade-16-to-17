@@ -30,5 +30,13 @@ At a high level, Solution 02 will work like this:
  ```bash
    ansible-playbook solutions/02-onboarding-do/ansible/onboard_do.yml -i inventory/hosts.ini
 ```
+## Running this solution
+
+Once your inventory and credentials are configured, run:
+
+```bash
+ansible-playbook solutions/02-onboarding-do/ansible/onboard_do.yml -i inventory/hosts.ini
+```
+
 
 
