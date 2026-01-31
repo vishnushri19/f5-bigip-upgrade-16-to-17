@@ -1,0 +1,17 @@
+---
+# Placeholder playbook: pushes a DO declaration to BIG-IP
+# Solution 02 – BIG-IP Onboarding with DO
+
+- name: Onboard BIG-IP using Declarative Onboarding
+  hosts: bigip
+  connection: httpapi
+  gather_facts: false
+
+  vars:
+    # TODO: path to DO JSON declaration file
+    do_declaration_file: "do/single-device-basic.json"
+
+  tasks:
+    - name: Placeholder task – DO onboarding will be implemented here
+      debug:
+        msg: "This playbook will POST {{ do_declaration_file }} to the BIG-IP DO endpoint in a future version."
