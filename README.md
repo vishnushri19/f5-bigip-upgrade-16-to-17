@@ -1,6 +1,6 @@
-# F5 BIG-IP 16 → 17 Upgrade Automation
+# F5 BIG-IP Automation Blueprints (Upgrade 16 → 17 and Beyond)
 
-An Ansible-based automation framework for upgrading F5 BIG-IP systems from version 16.x to 17.x, including pre-checks, UCS backup, upgrade execution, and post-upgrade validation.
+This repository provides production-ready automation blueprints for F5 BIG-IP using Ansible. The initial solution focuses on upgrading BIG-IP systems from version 16.x to 17.x with pre- and post-checks, and future blueprints will cover onboarding, WAF-enabled applications, and observability patterns.
 
 ---
 
@@ -58,7 +58,7 @@ New to this project? Start here:
 ```bash
 python3.12 -m venv venv
 source venv/bin/activate
-
+```
 ### 2. Install Ansible
 pip install ansible-core==2.15.13
 
