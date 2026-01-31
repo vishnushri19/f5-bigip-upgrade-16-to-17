@@ -1,5 +1,7 @@
 # F5 BIG-IP Automation Blueprints (Upgrade 16 → 17 and Beyond)
 
+![Ansible Lint](https://github.com/vishnushi19/f5-bigip-upgrade-16-to-17/actions/workflows/ansible-lint.yml/badge.svg)
+
 This repository provides production-ready automation blueprints for F5 BIG-IP using Ansible. The initial solution focuses on upgrading BIG-IP systems from version 16.x to 17.x with pre- and post-checks, and future blueprints will cover onboarding, WAF-enabled applications, and observability patterns.
 
 ---
