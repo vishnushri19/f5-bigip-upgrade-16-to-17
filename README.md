@@ -27,11 +27,21 @@ f5-bigip-upgrade-16-to-17/
 
 ```
 
+## 📦 Available Solutions
+
+This repository is organized as a catalog of F5 BIG-IP automation blueprints. Each solution lives under the `solutions/` directory.
+
+- [Solution 01 – BIG-IP 16 → 17 Upgrade](solutions/01-upgrade-16-to-17/README.md)  
+  Automates pre-checks, UCS backup, software installation, and post-upgrade validation for upgrading BIG-IP from 16.x to 17.x.
+
+Future solutions (planned in `docs/ROADMAP.md`) will cover onboarding, WAF-enabled applications, and observability.
+
+
 ## 🚀 Quick Start
 
 New to this project? Start here:
 
-- Installation Guide
+- Installation Guide (see SETUP.md)
 - Clone Repository
 - Configure Environment
 - Test Connection
