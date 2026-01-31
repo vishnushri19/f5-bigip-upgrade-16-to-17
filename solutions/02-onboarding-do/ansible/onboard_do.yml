@@ -1,22 +1,31 @@
 ---
-# solutions/02-onboarding-do/ansible/onboard_do.yml
-# Solution 02 – BIG-IP Onboarding with DO
+# Solution 02 – BIG-IP Onboarding with Declarative Onboarding (DO)
+# This playbook:
+# 1. Loads a DO JSON file from disk
+# 2. POSTs it to the BIG-IP DO endpoint
+# 3. Polls the DO task until it finishes
+# 4. Fails clearly if onboarding fails
 
 - name: Onboard BIG-IP using Declarative Onboarding
-  hosts: bigip
+  hosts: bigip           # Inventory group (see inventory/hosts.ini)
   connection: httpapi
   gather_facts: false
 
   vars:
+    # Path to the DO declaration file inside this repo
     do_declaration_file: "solutions/02-onboarding-do/do/single-device-basic.json"
+
+    # Base DO endpoint on BIG-IP
     do_url: "/mgmt/shared/declarative-onboarding"
 
   tasks:
     - name: Load DO declaration from file
+      # Reads the JSON file into a variable (string)
       set_fact:
         do_body: "{{ lookup('file', do_declaration_file) }}"
 
-    - name: POST DO declaration
+    - name: POST DO declaration to BIG-IP
+      # Sends the JSON body to the DO REST endpoint
       uri:
         url: "https://{{ ansible_host }}{{ do_url }}"
         method: POST
@@ -27,24 +36,28 @@
       register: do_post
 
     - name: Extract DO task ID
+      # Different DO versions return slightly different JSON; try both patterns
       set_fact:
         do_task_id: "{{ do_post.json.id | default(do_post.json.result.id) }}"
 
-    - name: Wait for DO task to finish
+    - name: Poll DO task status until finished
+      # Repeatedly queries the task URL until status is OK or ERROR
       uri:
         url: "https://{{ ansible_host }}{{ do_url }}/task/{{ do_task_id }}"
         method: GET
         validate_certs: false
       register: do_status
       until: do_status.json.result.status in ['OK', 'ERROR']
-      retries: 30
-      delay: 10
+      retries: 30          # Up to 30 attempts
+      delay: 10            # Wait 10 seconds between attempts
 
-    - name: Fail if DO task failed
+    - name: Fail if DO task did not succeed
+      # If final status is not OK, fail with the full result for troubleshooting
       fail:
         msg: "DO onboarding failed: {{ do_status.json.result }}"
       when: do_status.json.result.status != 'OK'
 
     - name: Show final DO result
+      # On success, print the final status and any messages
       debug:
         var: do_status.json.result
