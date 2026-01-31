@@ -1,1 +1,3 @@
-{}
+{
+  "//": "Placeholder for HA pair Declarative Onboarding declaration. This file will later define an active/standby BIG-IP cluster with shared VLANs, Self IPs, and device group configuration."
+}
