@@ -18,3 +18,17 @@ Planned structure (subject to change):
 - `docs/` – Implementation notes and best practices
 
 This folder is currently a placeholder and will be filled as Solution 02 is developed.
+
+## Flow
+
+At a high level, Solution 02 will work like this:
+
+1. Choose a DO declaration from `do/` (for example `do/single-device-basic.json`).
+2. Update the `do_declaration_file` variable in `ansible/onboard_do.yml` if needed.
+3. Run the onboarding playbook against your BIG-IP inventory:
+
+ ```bash
+   ansible-playbook solutions/02-onboarding-do/ansible/onboard_do.yml -i inventory/hosts.ini
+```
+
+
