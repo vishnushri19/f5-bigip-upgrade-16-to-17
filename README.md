@@ -34,6 +34,9 @@ This repository is organized as a catalog of F5 BIG-IP automation blueprints. Ea
 - [Solution 01 – BIG-IP 16 → 17 Upgrade](solutions/01-upgrade-16-to-17/README.md)  
   Automates pre-checks, UCS backup, software installation, and post-upgrade validation for upgrading BIG-IP from 16.x to 17.x.
 
+- [Solution 02 – BIG-IP Onboarding with DO](solutions/02-onboarding-do/README.md)  
+  Standardizes initial BIG-IP provisioning (system, network, licensing, HA) using Declarative Onboarding declarations.
+
 Future solutions (planned in `docs/ROADMAP.md`) will cover onboarding, WAF-enabled applications, and observability.
 
 
