@@ -1,5 +1,5 @@
 ---
-# Placeholder playbook: pushes a DO declaration to BIG-IP
+# solutions/02-onboarding-do/ansible/onboard_do.yml
 # Solution 02 – BIG-IP Onboarding with DO
 
 - name: Onboard BIG-IP using Declarative Onboarding
@@ -8,10 +8,43 @@
   gather_facts: false
 
   vars:
-    # TODO: path to DO JSON declaration file
-    do_declaration_file: "do/single-device-basic.json"
+    do_declaration_file: "solutions/02-onboarding-do/do/single-device-basic.json"
+    do_url: "/mgmt/shared/declarative-onboarding"
 
   tasks:
-    - name: Placeholder task – DO onboarding will be implemented here
+    - name: Load DO declaration from file
+      set_fact:
+        do_body: "{{ lookup('file', do_declaration_file) }}"
+
+    - name: POST DO declaration
+      uri:
+        url: "https://{{ ansible_host }}{{ do_url }}"
+        method: POST
+        body: "{{ do_body }}"
+        body_format: json
+        validate_certs: false
+        status_code: 200,202
+      register: do_post
+
+    - name: Extract DO task ID
+      set_fact:
+        do_task_id: "{{ do_post.json.id | default(do_post.json.result.id) }}"
+
+    - name: Wait for DO task to finish
+      uri:
+        url: "https://{{ ansible_host }}{{ do_url }}/task/{{ do_task_id }}"
+        method: GET
+        validate_certs: false
+      register: do_status
+      until: do_status.json.result.status in ['OK', 'ERROR']
+      retries: 30
+      delay: 10
+
+    - name: Fail if DO task failed
+      fail:
+        msg: "DO onboarding failed: {{ do_status.json.result }}"
+      when: do_status.json.result.status != 'OK'
+
+    - name: Show final DO result
       debug:
-        msg: "This playbook will POST {{ do_declaration_file }} to the BIG-IP DO endpoint in a future version."
+        var: do_status.json.result
